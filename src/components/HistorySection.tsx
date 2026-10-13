@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { useDetection, Detection } from '@/contexts/DetectionContext';
-import DetectionCard from './DetectionCard';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useDetection } from '@/contexts/DetectionContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { detectionHistoryCsv, readSavedDetections } from '@/lib/history-export';
 import {
   History, Search, Filter, Calendar, SlidersHorizontal, Download,
   ChevronDown, Image, Video, Music, AlertTriangle, CheckCircle2,
@@ -9,14 +10,25 @@ import {
 
 const HistorySection: React.FC = () => {
   const { detections, setSelectedDetection } = useDetection();
+  const { user } = useAuth();
+  const savedKey = `lucid:saved-detections:${user?.id ?? 'anonymous'}`;
   const [searchQuery, setSearchQuery] = useState('');
   const [mediaFilter, setMediaFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [confidenceRange, setConfidenceRange] = useState([0, 100]);
   const [sortBy, setSortBy] = useState<'date' | 'confidence'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
+  const [savedState, setSavedState] = useState(() => ({ key: savedKey, ids: new Set<string>() }));
+  const savedItems = useMemo(() => savedState.key === savedKey ? savedState.ids : new Set<string>(), [savedState, savedKey]);
   const [showSavedOnly, setShowSavedOnly] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSavedState({ key: savedKey, ids: readSavedDetections(localStorage, savedKey) });
+    } catch {
+      setSavedState({ key: savedKey, ids: new Set() });
+    }
+  }, [savedKey]);
 
   const filteredDetections = useMemo(() => {
     let filtered = [...detections];
@@ -61,22 +73,15 @@ const HistorySection: React.FC = () => {
   }, [detections, searchQuery, mediaFilter, statusFilter, confidenceRange, sortBy, sortOrder, showSavedOnly, savedItems]);
 
   const toggleSaved = (id: string) => {
-    setSavedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(savedItems);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSavedState({ key: savedKey, ids: next });
+    try { localStorage.setItem(savedKey, JSON.stringify([...next])); } catch { /* session-only if storage is unavailable */ }
   };
 
   const exportHistory = () => {
-    const csv = [
-      'Title,Media Type,Platform,AI Confidence,AI Model,Status,Scanned At',
-      ...filteredDetections.map(d =>
-        `"${d.title}",${d.media_type},${d.source_platform},${d.ai_confidence}%,"${d.ai_model_detected}",${d.is_ai_generated ? 'AI Generated' : 'Authentic'},${new Date(d.scanned_at).toISOString()}`
-      )
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([detectionHistoryCsv(filteredDetections)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -265,6 +270,8 @@ const HistorySection: React.FC = () => {
             {/* Save button */}
             <button
               onClick={(e) => { e.stopPropagation(); toggleSaved(d.id); }}
+              aria-label={savedItems.has(d.id) ? `Unsave ${d.title}` : `Save ${d.title}`}
+              aria-pressed={savedItems.has(d.id)}
               className={`p-2 rounded-lg transition-colors ${
                 savedItems.has(d.id) ? 'text-yellow-400 bg-yellow-500/10' : 'text-gray-600 hover:text-yellow-400 hover:bg-yellow-500/10'
               }`}

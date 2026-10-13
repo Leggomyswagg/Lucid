@@ -56,6 +56,11 @@ VITE_SUPABASE_URL=your-supabase-url
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
+History bookmarks persist in this browser and are kept separately for each signed-in
+user (and anonymous browsing). They do not sync across devices. CSV export includes
+the currently filtered history, escapes quoted/multiline fields, and neutralizes
+spreadsheet formulas in text values.
+
 ## 📦 Deployment
 
 Lucid deploys automatically to **Vercel** on every push to `main`. The framework preset is **Vite** with build command `npm run build` and output directory `dist`.
